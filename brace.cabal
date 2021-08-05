@@ -46,6 +46,7 @@ library brace-internal
       Message.Utils
       Pool
       SimpleLens
+      StateAndLens
       Tokens
   other-modules:
       Paths_brace

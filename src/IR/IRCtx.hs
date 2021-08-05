@@ -38,6 +38,8 @@ import IR.Value
 
 import {-# SOURCE #-} IR.Type
 
+import qualified Control.Monad.State as State (State, state)
+
 type IsDeclSymbol' = IsDeclSymbol IRCtx
 type DeclSymbol' = DeclSymbol IRCtx
 type IsValue' = IsValue IRCtx (DSIdx Type)
@@ -64,45 +66,45 @@ v_child_list = Lens _v_child_list (\ a b -> a { _v_child_list = b })
 
 newtype DSIdx d = DSIdx { upcast_dsidx :: InternerIdx DeclSymbol' } deriving (Eq, Ord)
 
-downcast_dsidx :: IsDeclSymbol' d => InternerIdx DeclSymbol' -> IRCtx -> Maybe (DSIdx d)
-downcast_dsidx idx irctx =
+downcast_dsidx :: IsDeclSymbol' d => InternerIdx DeclSymbol' -> State.State IRCtx (Maybe (DSIdx d))
+downcast_dsidx idx = State.state $ \ irctx ->
     let ds = resolve_interner_idx idx (view ds_interner irctx)
 
         into_dsidx :: Maybe d -> Maybe (DSIdx d)
         into_dsidx d = DSIdx idx <$ d
 
-    in into_dsidx (ds_cast ds)
+    in (into_dsidx (ds_cast ds), irctx)
 
-get_ds :: IsDeclSymbol' d => d -> IRCtx -> (DSIdx d, IRCtx)
-get_ds d irctx =
+get_ds :: IsDeclSymbol' d => d -> State.State IRCtx (DSIdx d)
+get_ds d = State.state $ \ irctx ->
     let (iidx, irctx') = modify ds_interner (get_from_interner (DeclSymbol d)) irctx
     in (DSIdx iidx, irctx')
 
-resolve_dsidx :: IsDeclSymbol' d => DSIdx d -> IRCtx -> d
-resolve_dsidx (DSIdx iidx) irctx =
+resolve_dsidx :: IsDeclSymbol' d => DSIdx d -> State.State IRCtx d
+resolve_dsidx (DSIdx iidx) = State.state $ \ irctx ->
     case ds_cast $ resolve_interner_idx iidx $ view ds_interner irctx of
-        Just d -> d
+        Just d -> (d, irctx)
         Nothing -> error "DSIdx does not have correct type"
 
 
 newtype VIdx v = VIdx { upcast_vidx :: InternerIdx Value' } deriving (Eq, Ord)
 
-downcast_vidx :: IsValue' v => InternerIdx Value' -> IRCtx -> Maybe (VIdx v)
-downcast_vidx idx irctx =
+downcast_vidx :: IsValue' v => InternerIdx Value' -> State.State IRCtx (Maybe (VIdx v))
+downcast_vidx idx = State.state $ \ irctx ->
     let v = resolve_interner_idx idx (view v_interner irctx)
         
         into_vidx :: Maybe v -> Maybe (VIdx v)
         into_vidx v' = VIdx idx <$ v'
 
-    in into_vidx (v_cast v)
+    in (into_vidx (v_cast v), irctx)
 
-get_v :: IsValue' v => v -> IRCtx -> (VIdx v, IRCtx)
-get_v v irctx =
+get_v :: IsValue' v => v -> State.State IRCtx (VIdx v)
+get_v v = State.state $ \ irctx ->
     let (iidx, irctx') = modify v_interner (get_from_interner (Value v)) irctx
     in (VIdx iidx, irctx')
 
-resolve_vidx :: IsValue' v => VIdx v -> IRCtx -> v
-resolve_vidx (VIdx iidx) irctx = 
+resolve_vidx :: IsValue' v => VIdx v -> State.State IRCtx v
+resolve_vidx (VIdx iidx) = State.state $ \ irctx ->
     case v_cast $ resolve_interner_idx iidx $ view v_interner irctx of
-        Just v -> v
+        Just v -> (v, irctx)
         Nothing -> error "VIdx does not have correct type"

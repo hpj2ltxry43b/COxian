@@ -20,6 +20,8 @@ import IR.IRCtx
 
 import Data.List (intercalate)
 
+import qualified Control.Monad.State as State (State)
+
 data Signedness = Signed | Unsigned deriving Eq
 data FloatSize = F32 | F64 deriving Eq
 data IntSize = I8 | I16 | I32 | I64 deriving Eq
@@ -43,12 +45,12 @@ instance Show IntSize where
     show I64 = "64"
 
 instance DeclSpan IRCtx Type where
-    decl_span _ (FloatType _) = Nothing
-    decl_span _ (IntType _ _) = Nothing
-    decl_span _ CharType = Nothing
-    decl_span _ BoolType = Nothing
-    decl_span _ UnitType = Nothing
-    decl_span _ (FunctionPointerType _ _) = Nothing
+    decl_span (FloatType _) = return Nothing
+    decl_span (IntType _ _) = return Nothing
+    decl_span CharType = return Nothing
+    decl_span BoolType = return Nothing
+    decl_span UnitType = return Nothing
+    decl_span (FunctionPointerType _ _) = return Nothing
 
 instance IsDeclSymbol IRCtx Type
 
@@ -58,21 +60,21 @@ match_signedness s u sgn =
         Signed -> s
         Unsigned -> u
 
-stringify_ty :: IRCtx -> Type -> String
+stringify_ty :: Type -> State.State IRCtx String
 
-stringify_ty _ (FloatType F32) = "float"
-stringify_ty _ (FloatType F64) = "double"
+stringify_ty (FloatType F32) = return "float"
+stringify_ty (FloatType F64) = return "double"
 
-stringify_ty _ (IntType size signedness) = match_signedness "s" "u" signedness ++ "int" ++ show size
+stringify_ty (IntType size signedness) = return $ match_signedness "s" "u" signedness ++ "int" ++ show size
 
-stringify_ty _ CharType = "char"
-stringify_ty _ BoolType = "bool"
-stringify_ty _ UnitType = "unit"
+stringify_ty CharType = return "char"
+stringify_ty BoolType = return "bool"
+stringify_ty UnitType = return "unit"
 
-stringify_ty irctx (FunctionPointerType retty params) =
-    let ret_str = stringify_ty irctx (resolve_dsidx retty irctx)
-        param_strs = map (stringify_ty irctx . flip resolve_dsidx irctx) params
-    in "fun(" ++ intercalate ", " param_strs ++ "): " ++ ret_str
+stringify_ty (FunctionPointerType retty params) =
+    resolve_dsidx retty >>= stringify_ty >>= \ ret_str ->
+    sequence (map (\ dsidx -> resolve_dsidx dsidx >>= stringify_ty) params) >>= \ param_strs ->
+    return $ "fun(" ++ intercalate ", " param_strs ++ "): " ++ ret_str
 
 builtin_types :: [(String, Type)]
 builtin_types =

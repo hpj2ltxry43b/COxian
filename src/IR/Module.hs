@@ -7,9 +7,7 @@ module IR.Module
     , new_module
     ) where
 
-import Interner
-
-import SimpleLens
+import StateAndLens
 
 import Location
 
@@ -22,26 +20,24 @@ import IR.ChildList
 
 import IR.Type (builtin_types)
 
-import Data.List (mapAccumL, foldl')
+import qualified Control.Monad.State as State (State)
 
 data Module = Module Span
 
-new_module :: Span -> IRCtx -> (DSIdx Module, IRCtx)
-new_module sp irctx =
-    let (mod_idx, irctx') = get_ds (Module sp) irctx
-
-        get_tyidx ctx (tyn, ty) =
-            let (tyidx, ctx') = modify ds_interner (get_from_interner $ DeclSymbol ty) (ctx :: IRCtx)
-            in (ctx', (tyn, tyidx))
-
-        (irctx'', tyidxs) = mapAccumL get_tyidx irctx' builtin_types
-
-        irctx''' = foldl' (\ i (tyn, tyidx) -> over ds_child_list (add_replace (upcast_dsidx mod_idx) tyn tyidx) i) irctx'' tyidxs
-            
-    in (mod_idx, irctx''')
+new_module :: Span -> State.State IRCtx (DSIdx Module)
+new_module sp =
+    get_ds (Module sp) >>= \ mod_idx ->
+    sequence
+        (map
+        (\ (name, ty) ->
+            get_ds ty >>= \ ty_dsidx ->
+            over_s ds_child_list (add_replace (upcast_dsidx mod_idx) name (upcast_dsidx ty_dsidx))
+            )
+        builtin_types) >>
+    return mod_idx
 
 instance DeclSpan IRCtx Module where
-    decl_span _ (Module sp) = Just sp
+    decl_span (Module sp) = return $ Just sp
 
 instance Eq Module where
     _ == _ = True
