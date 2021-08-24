@@ -20,7 +20,7 @@ import IR.IRCtx
 
 import Data.List (intercalate)
 
-import qualified Control.Monad.State as State (State)
+import qualified Control.Monad.Reader as Reader (Reader)
 
 data Signedness = Signed | Unsigned deriving Eq
 data FloatSize = F32 | F64 deriving Eq
@@ -60,7 +60,7 @@ match_signedness s u sgn =
         Signed -> s
         Unsigned -> u
 
-stringify_ty :: Type -> State.State IRCtx String
+stringify_ty :: Type -> Reader.Reader IRCtx String
 
 stringify_ty (FloatType F32) = return "float"
 stringify_ty (FloatType F64) = return "double"
@@ -72,7 +72,8 @@ stringify_ty BoolType = return "bool"
 stringify_ty UnitType = return "unit"
 
 stringify_ty (FunctionPointerType retty params) =
-    resolve_dsidx retty >>= stringify_ty >>= \ ret_str ->
+    resolve_dsidx retty >>=
+    stringify_ty >>= \ ret_str ->
     sequence (map (\ dsidx -> resolve_dsidx dsidx >>= stringify_ty) params) >>= \ param_strs ->
     return $ "fun(" ++ intercalate ", " param_strs ++ "): " ++ ret_str
 

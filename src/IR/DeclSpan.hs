@@ -4,7 +4,7 @@ module IR.DeclSpan where
 
 import Location
 
-import qualified Control.Monad.State as State (State)
+import qualified Control.Monad.Reader as Reader (Reader)
 
 class DeclSpan ctx d where
-    decl_span :: d -> State.State ctx (Maybe Span)
+    decl_span :: d -> Reader.Reader ctx (Maybe Span)

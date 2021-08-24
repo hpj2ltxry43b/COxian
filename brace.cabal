@@ -27,8 +27,10 @@ library brace-internal
       Interner
       IR
       IR.ChildList
+      IR.ConstFunctionPointer
       IR.DeclSpan
       IR.DeclSymbol
+      IR.Function
       IR.IRCtx
       IR.Module
       IR.Type
@@ -47,6 +49,7 @@ library brace-internal
       Pool
       SimpleLens
       StateAndLens
+      StateReader
       Tokens
   other-modules:
       Paths_brace
