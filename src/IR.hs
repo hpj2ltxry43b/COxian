@@ -188,3 +188,12 @@ lower_module :: (AST.LDDecl -> DSIdx Module -> DSIdx Module -> State.State IRBui
 lower_module lower_decl (Located _ (AST.DModule' decls)) mod_idx = mapM_ (\ decl -> lower_decl decl mod_idx mod_idx) decls
 -- lowering declarations {{{1
 instance Lowerable AST.LDDecl p where
+    ddeclare (Located _ (AST.DDecl'Fun sf)) = ddeclare sf
+
+    ddefine (Located _ (AST.DDecl'Fun sf)) = ddefine sf
+
+    vdeclare (Located _ (AST.DDecl'Fun sf)) = vdeclare sf
+
+    vdefine (Located _ (AST.DDecl'Fun sf)) = vdefine sf
+-- lowering functions {{{1
+instance Lowerable AST.LSFunDecl p where
