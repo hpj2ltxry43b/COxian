@@ -175,13 +175,14 @@ build_ir mod_ast@(Located mod_sp _) =
         lower =
             modify_s' irb_irctx (new_module mod_sp) >>= \ mod_idx ->
 
-            -- TODO:
-            -- ddeclare
-            -- ddefine
-            -- vdeclare
-            -- vdefine
+            lower_module ddeclare mod_ast mod_idx >>
+            lower_module ddefine mod_ast mod_idx >>
+            lower_module vdeclare mod_ast mod_idx >>
+            lower_module vdefine mod_ast mod_idx >>
 
             return mod_idx
 -- lowering modules {{{1
 lower_module :: (AST.LDDecl -> DSIdx Module -> DSIdx Module -> State.State IRBuilder ()) -> Located AST.DModule -> DSIdx Module -> State.State IRBuilder ()
 lower_module lower_decl (Located _ (AST.DModule' decls)) mod_idx = mapM_ (\ decl -> lower_decl decl mod_idx mod_idx) decls
+-- lowering declarations {{{1
+instance Lowerable AST.LDDecl p where
