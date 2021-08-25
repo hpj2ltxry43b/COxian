@@ -15,7 +15,7 @@ import qualified Control.Monad.Reader as Reader (Reader)
 import Control.Monad (filterM, liftM)
 
 lower_mod_to_c :: IR.Module -> Reader.Reader IR.IRCtx String
-lower_mod_to_c root =
+lower_mod_to_c _ =
     interner_idxs <$> view_r IR.ds_interner >>= \ dses ->
     interner_idxs <$> view_r IR.v_interner >>= \ vals ->
     let include_section =
