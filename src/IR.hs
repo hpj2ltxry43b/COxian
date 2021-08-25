@@ -182,3 +182,6 @@ build_ir mod_ast@(Located mod_sp _) =
             -- vdefine
 
             return mod_idx
+-- lowering modules {{{1
+lower_module :: (AST.LDDecl -> DSIdx Module -> DSIdx Module -> State.State IRBuilder ()) -> Located AST.DModule -> DSIdx Module -> State.State IRBuilder ()
+lower_module lower_decl (Located _ (AST.DModule' decls)) mod_idx = mapM_ (\ decl -> lower_decl decl mod_idx mod_idx) decls
