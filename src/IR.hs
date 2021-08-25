@@ -64,6 +64,7 @@ import Location
 
 import Interner
 import SimpleLens
+import StateAndLens
 
 import Data.Maybe (catMaybes)
 
@@ -162,3 +163,22 @@ instance Message.ToDiagnostic (IRBuildError, IRCtx) where
 -- Lowerable class {{{1
 class Lowerable l p where
     ddeclare, ddefine, vdeclare, vdefine :: l -> DSIdx Module -> DSIdx p -> State.State IRBuilder ()
+-- build_ir {{{1
+build_ir :: AST.LDModule -> State.State IRCtx (DSIdx Module, [IRBuildError])
+build_ir mod_ast@(Located mod_sp _) =
+    State.state $
+        \ irctx ->
+            let irb = IRBuilder irctx []
+                (mod_idx, IRBuilder irctx' errors) = State.runState lower irb
+            in ((mod_idx, errors), irctx')
+    where
+        lower =
+            modify_s' irb_irctx (new_module mod_sp) >>= \ mod_idx ->
+
+            -- TODO:
+            -- ddeclare
+            -- ddefine
+            -- vdeclare
+            -- vdefine
+
+            return mod_idx
