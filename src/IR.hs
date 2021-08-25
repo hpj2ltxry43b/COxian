@@ -68,8 +68,8 @@ import StateAndLens
 
 import Data.Maybe (catMaybes)
 
-import qualified Control.Monad.State as State (State, state, runState, get)
-import qualified Control.Monad.Reader as Reader (Reader, reader, runReader)
+import qualified Control.Monad.State as State (State, state, runState)
+import qualified Control.Monad.Reader as Reader (Reader, runReader)
 
 -- IRBuilder {{{1
 data IRBuilder = IRBuilder IRCtx [IRBuildError]
