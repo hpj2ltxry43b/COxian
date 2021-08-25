@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module IR
@@ -64,20 +65,22 @@ import Location
 import Interner
 import SimpleLens
 
-import qualified Control.Monad.State as State (State, state, get, runState)
-import qualified Control.Monad.Reader as Reader (Reader, reader)
+import Data.Maybe (catMaybes)
+
+import qualified Control.Monad.State as State (State, state, runState, get)
+import qualified Control.Monad.Reader as Reader (Reader, reader, runReader)
 
 -- IRBuilder {{{1
 data IRBuilder = IRBuilder IRCtx [IRBuildError]
 
 irb_irctx :: Lens IRBuilder IRCtx
-irb_irctx = Lens _ _
+irb_irctx = Lens (\ (IRBuilder i _) -> i)  (\ (IRBuilder _ e) i -> IRBuilder i e)
 irb_errors :: Lens IRBuilder [IRBuildError]
-irb_errors = Lens _ _
+irb_errors = Lens (\ (IRBuilder _ e) -> e) (\ (IRBuilder i _) e -> IRBuilder i e)
 -- IRBuildError {{{1
 data IRBuildError
     = DuplicateValue String Value' Value'
-    | DuplicateLocal Function Local LValue
+    -- | DuplicateLocal Function Local LValue TODO
     | Unimplemented String Span
     | NotAType Span DeclSymbol'
     | PathDoesntExist Span -- TODO: change to 'no entity called x in y'
@@ -85,14 +88,11 @@ data IRBuildError
     | TypeError TypeError
     | AddrofNotLValue Span
 
-duplicate_msg :: String -> String -> String -> Maybe Span -> Maybe Span -> Message.SimpleDiag
-duplicate_msg entity_kind diag_name name old_sp new_sp =
-    let if_span m_sp ty imp msg =
-            case m_sp of
-                Just sp -> Right $ MsgUnds.Underline sp imp [MsgUnds.Message ty msg]
-                Nothing -> Left $ Message.Note msg
-
-        oldmsg = if_span old_sp MsgUnds.Note MsgUnds.Secondary $ entity_kind ++ " '" ++ name ++ "' already declared"
+duplicate_msg :: (DeclSpan IRCtx a, DeclSpan IRCtx b) => String -> String -> String -> a -> b -> Reader.Reader IRCtx Message.SimpleDiag
+duplicate_msg entity_kind diag_name name old new =
+    decl_span old >>= \ old_sp ->
+    decl_span new >>= \ new_sp ->
+    let oldmsg = if_span old_sp MsgUnds.Note MsgUnds.Secondary $ entity_kind ++ " '" ++ name ++ "' already declared"
         newmsg = if_span new_sp MsgUnds.Error MsgUnds.Primary $ entity_kind ++ " '" ++ name ++ "' redeclared"
         totalmsgs = [oldmsg, newmsg]
 
@@ -102,14 +102,25 @@ duplicate_msg entity_kind diag_name name old_sp new_sp =
                 msgs -> Just $ Message.Underlines msgs
         notes = [Just x | Left x <- totalmsgs]
         sections = catMaybes $ underlines_section : notes
-    in Message.SimpleDiag Message.Error new_sp Nothing (Just diag_name) sections
+
+    in return $ Message.SimpleDiag Message.Error new_sp Nothing (Just diag_name) sections
+
+    where
+        if_span m_sp ty imp msg =
+            case m_sp of
+                Just sp -> Right $ MsgUnds.Underline sp imp [MsgUnds.Message ty msg]
+                Nothing -> Left $ Message.Note msg
+
 
 instance Message.ToDiagnostic (IRBuildError, IRCtx) where
     to_diagnostic (DuplicateValue name old new, irctx) =
-        duplicate_msg "value" "redecl-val" name (decl_span irctx old) (decl_span irctx new)
+        Reader.runReader
+            (duplicate_msg "value" "redecl-val" name old new)
+            irctx
 
-    to_diagnostic (DuplicateLocal fun (Local name old_lvalue _) new_lvalue, irctx) =
-        duplicate_msg "local" "redecl-local" name (decl_span irctx (fun, old_lvalue)) (decl_span irctx (fun, new_lvalue))
+    -- TODO:
+    -- to_diagnostic (DuplicateLocal fun (Local name old_lvalue _) new_lvalue, irctx) =
+        -- duplicate_msg "local" "redecl-local" name (decl_span irctx (fun, old_lvalue)) (decl_span irctx (fun, new_lvalue))
 
     to_diagnostic (Unimplemented name sp, _) =
         Message.SimpleDiag Message.Error (Just sp) Nothing Nothing

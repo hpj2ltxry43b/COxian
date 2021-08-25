@@ -33,5 +33,11 @@ instance Eq (Value ctx tyr) where
 instance Typed ctx tyr (Value ctx tyr) where
     type_of (Value v) = type_of v
 
+instance DeclSpan ctx (Value ctx tyr) where
+    decl_span (Value v) = decl_span v
+
+instance IdentifyV (Value ctx tyr) where
+    identify_v (Value v) = identify_v v
+
 v_cast :: IsValue ctx tyr v => Value ctx tyr -> Maybe v
 v_cast (Value v) = cast v
