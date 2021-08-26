@@ -72,7 +72,7 @@ import StateReader
 import Data.Maybe (catMaybes)
 import Data.List (find)
 
-import qualified Control.Monad.State as State (State, state, runState)
+import qualified Control.Monad.State as State (State, state, runState, get, put)
 import qualified Control.Monad.Reader as Reader (Reader, runReader)
 
 -- IRBuilder {{{1
@@ -85,7 +85,7 @@ irb_errors = Lens (\ (IRBuilder _ e) -> e) (\ (IRBuilder i _) e -> IRBuilder i e
 -- IRBuildError {{{1
 data IRBuildError
     = DuplicateValue String (InternerIdx Value') (InternerIdx Value')
-    -- | DuplicateLocal Function Local LValue TODO
+    | DuplicateLocal Function Local LValue
     | Unimplemented String Span
     | NotAType Span (InternerIdx DeclSymbol')
     | PathDoesntExist Span -- TODO: change to 'no entity called x in y'
@@ -126,9 +126,12 @@ instance Message.ToDiagnostic (IRBuildError, IRCtx) where
             )
             irctx
 
-    -- TODO:
-    -- to_diagnostic (DuplicateLocal fun (Local name old_lvalue _) new_lvalue, irctx) =
-        -- duplicate_msg "local" "redecl-local" name (decl_span irctx (fun, old_lvalue)) (decl_span irctx (fun, new_lvalue))
+    to_diagnostic (DuplicateLocal fun (Local name old_lvalue _) new_lvalue, irctx) =
+        Reader.runReader
+            (
+                duplicate_msg "local" "redecl-local" name (fun, old_lvalue) (fun, new_lvalue)
+            )
+            irctx
 
     to_diagnostic (Unimplemented name sp, _) =
         Message.SimpleDiag Message.Error (Just sp) Nothing Nothing
@@ -293,18 +296,19 @@ instance Lowerable AST.LSFunDecl p where
             -- that made a value of the same name that is not a function, which should already be reported as a duplicate value error
             Nothing -> return ()
 
-            Just old_fun ->
-                let x :: VIdx ConstFunctionPointer
-                    x = old_fun
-                in lower_fun_body sf root old_fun parent
+            Just old_fun -> lower_fun_body sf root old_fun
 -- lowering function bodies {{{2
 data Local = Local String LValue Integer
-data FunctionCG = FunctionCG Integer [Local]
+data FunctionCG = FunctionCG IRBuilder Function Integer [Local]
 
+fcg_irb :: Lens FunctionCG IRBuilder
+fcg_irb = Lens (\ (FunctionCG b _ _ _) -> b)  (\ (FunctionCG _ f i l) b -> FunctionCG b f i l)
+fcg_fun :: Lens FunctionCG Function
+fcg_fun = Lens (\ (FunctionCG _ f _ _) -> f)  (\ (FunctionCG b _ i l) f -> FunctionCG b f i l)
 fcg_scope_index :: Lens FunctionCG Integer
-fcg_scope_index = Lens (\ (FunctionCG i _) -> i)  (\ (FunctionCG _ l) i -> FunctionCG i l)
+fcg_scope_index = Lens (\ (FunctionCG _ _ i _) -> i)  (\ (FunctionCG b f _ l) i -> FunctionCG b f i l)
 fcg_locals :: Lens FunctionCG [Local]
-fcg_locals = Lens (\ (FunctionCG _ l) -> l) (\ (FunctionCG i _) l -> FunctionCG i l)
+fcg_locals = Lens (\ (FunctionCG _ _ _ l) -> l) (\ (FunctionCG b f i _) l -> FunctionCG b f i l)
 -- FunctionCG functions {{{3
 add_local :: String -> LValue -> State.State FunctionCG (Either Local ())
 add_local name lvalue =
@@ -318,3 +322,32 @@ add_local name lvalue =
 
 get_local :: String -> State.State FunctionCG (Maybe Local)
 get_local name = find (\ (Local n _ _) -> n == name) <$> view_s fcg_locals
+-- lower function body {{{3
+lower_fun_body :: AST.SFunDecl -> DSIdx Module -> VIdx ConstFunctionPointer -> State.State IRBuilder ()
+lower_fun_body (AST.SFunDecl' _ _ params body) root fptr_idx =
+    to_state (read_r' irb_irctx $ resolve_vidx fptr_idx) >>= \ fptr ->
+    let fun_idx = get_function_idx fptr
+    in resolve_interner_idx fun_idx <$> view_s (irb_irctx `join_lenses` function_interner) >>= \ fun ->
+    (if function_not_defined fun then return $ Just () else return Nothing) >>=? (return ()) $ \ _ ->
+    let param_to_local (Located _ (AST.DParam'Normal _ (Located _ param_name))) reg_idx =
+            let param_local = LVRegister reg_idx
+            in add_local param_name param_local >>= \case
+                Right () -> return ()
+                Left old_local ->
+                    modify_s' fcg_irb (add_error (DuplicateLocal fun old_local param_local)) >>
+                    return ()
+
+        lower_action =
+            sequence (zipWith param_to_local params (get_param_regs fun)) >>
+            lower_body_expr body root
+
+    in State.get >>= \ irb ->
+    let fcg = FunctionCG irb fun 0 []
+        (_, FunctionCG irb' fun' _ _) = State.runState lower_action fcg
+        fun'' = simplify_cfg fun'
+    in State.put irb' >>
+    -- TODO: replace function in interner
+    _
+-- lowering things {{{3
+lower_body_expr :: AST.LSBlockExpr -> DSIdx Module -> State.State FunctionCG ()
+lower_body_expr body root = _
