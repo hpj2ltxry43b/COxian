@@ -70,6 +70,7 @@ import StateAndLens
 import StateReader
 
 import Data.Maybe (catMaybes)
+import Data.List (find)
 
 import qualified Control.Monad.State as State (State, state, runState)
 import qualified Control.Monad.Reader as Reader (Reader, runReader)
@@ -296,3 +297,24 @@ instance Lowerable AST.LSFunDecl p where
                 let x :: VIdx ConstFunctionPointer
                     x = old_fun
                 in lower_fun_body sf root old_fun parent
+-- lowering function bodies {{{2
+data Local = Local String LValue Integer
+data FunctionCG = FunctionCG Integer [Local]
+
+fcg_scope_index :: Lens FunctionCG Integer
+fcg_scope_index = Lens (\ (FunctionCG i _) -> i)  (\ (FunctionCG _ l) i -> FunctionCG i l)
+fcg_locals :: Lens FunctionCG [Local]
+fcg_locals = Lens (\ (FunctionCG _ l) -> l) (\ (FunctionCG i _) l -> FunctionCG i l)
+-- FunctionCG functions {{{3
+add_local :: String -> LValue -> State.State FunctionCG (Either Local ())
+add_local name lvalue =
+    get_local name >>= \case
+        Just old -> return $ Left old
+        Nothing ->
+            view_s fcg_scope_index >>= \ scope_index ->
+            let new_local = Local name lvalue scope_index
+            in over_s fcg_locals (new_local:) >>
+            return (Right ())
+
+get_local :: String -> State.State FunctionCG (Maybe Local)
+get_local name = find (\ (Local n _ _) -> n == name) <$> view_s fcg_locals
